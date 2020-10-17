@@ -3,6 +3,7 @@
 
 # import json
 import pickle
+import sys
 from contextlib import suppress
 
 import blkinfo
@@ -95,6 +96,12 @@ if __name__ == '__main__':
             disk_data = clean_unnecessary_data(disk_data)
             print('We assume that it new setup, so we write data to db')
             write_data_to_db(disk_data, db)
+
+    disk_data = get_actual_data_from_system()
+    disk_data = clean_unnecessary_data(disk_data)
+    if disk_data == old_disk_data:
+        # Nothing happened, we can leave job
+        sys.exit(0)
 
 
 # from peewee import *
