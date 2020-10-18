@@ -8,6 +8,8 @@ from contextlib import suppress
 
 import blkinfo
 
+from pymdstat import MdStat
+
 db = '/root/disk.db'
 
 
@@ -75,14 +77,26 @@ def write_data_to_db(disk_data: dict, db: str) -> None:
         print('You need root priviledge for this programm')
 
 
-def check_md_arrays() -> str:
+def check_md_arrays() -> dict:
     """Check state of md arrays.
 
     Returns:
-        str: State of md arrays
+        dict: State of md arrays
 
     """
-    return 'clean'
+    md_status = {}
+
+    mds = MdStat()
+    md_arrays = mds.arrays()
+    for md in md_arrays:
+        if mds.type(md) == 'raid1':  # we only work with raid1
+            # /sys/block/md126/md/array_state
+            path_to_md_status = f'/sys/block/{md}/md/array_state'
+            with open(path_to_md_status, 'r') as file_handler:
+                status = file_handler.readline()
+                status = status.strip()
+            md_status[md] = status
+    return md_status
 
 
 if __name__ == '__main__':
@@ -90,8 +104,7 @@ if __name__ == '__main__':
     if not old_disk_data:
         # Get status of md array and if 'clean' write data to db.
         state = check_md_arrays()
-        # state = 'clean'
-        if state == 'clean':
+        if all(status == 'clean' for status in state.values()):
             disk_data = get_actual_data_from_system()
             disk_data = clean_unnecessary_data(disk_data)
             print('We assume that it new setup, so we write data to db')
@@ -103,6 +116,9 @@ if __name__ == '__main__':
         # Nothing happened, we can leave job
         sys.exit(0)
 
+
+# https://github.com/nicolargo/pymdstat
+# https://github.com/fbrehm/nagios-plugin/blob/master/bin/check_swraid
 
 # from peewee import *
 
