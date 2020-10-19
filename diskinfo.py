@@ -12,6 +12,62 @@ from pymdstat import MdStat
 
 db = '/root/disk.db'
 
+# https://github.com/canonical/curtin/blob/master/curtin/block/mdadm.py
+"""
+    clear
+        No devices, no size, no level
+        Writing is equivalent to STOP_ARRAY ioctl
+    inactive
+        May have some settings, but array is not active
+           all IO results in error
+        When written, doesn't tear down array, but just stops it
+    suspended (not supported yet)
+        All IO requests will block. The array can be reconfigured.
+        Writing this, if accepted, will block until array is quiessent
+    readonly
+         no resync can happen.  no superblocks get written.
+         write requests fail
+    read-auto
+        like readonly, but behaves like 'clean' on a write request.
+    clean - no pending writes, but otherwise active.
+        When written to inactive array, starts without resync
+        If a write request arrives then
+          if metadata is known, mark 'dirty' and switch to 'active'.
+          if not known, block and switch to write-pending
+        If written to an active array that has pending writes, then fails.
+    active
+        fully active: IO and resync can be happening.
+        When written to inactive array, starts with resync
+    write-pending
+        clean, but writes are blocked waiting for 'active' to be written.
+    active-idle
+      like active, but no writes have been seen for a while (safe_mode_delay).
+"""
+
+ERROR_RAID_STATES = [
+    'clear',
+    'inactive',
+    'suspended',
+]
+
+READONLY_RAID_STATES = [
+    'readonly',
+]
+
+READWRITE_RAID_STATES = [
+    'read-auto',
+    'clean',
+    'active',
+    'active-idle',
+    'write-pending',
+]
+
+VALID_RAID_ARRAY_STATES = (
+    ERROR_RAID_STATES +
+    READONLY_RAID_STATES +
+    READWRITE_RAID_STATES
+)
+
 
 def get_data_from_db(db: str) -> dict:
     """Get data from db.
@@ -99,12 +155,24 @@ def check_md_arrays() -> dict:
     return md_status
 
 
+def get_failed_disks():
+    ...
+
+
+def get_jira_status():
+    ...
+
+
+def create_jira_ticket():
+    ...
+
+
 if __name__ == '__main__':
     old_disk_data = get_data_from_db(db)
-    if not old_disk_data:
+    if not old_disk_data:  # If we don't have db.
         # Get status of md array and if 'clean' write data to db.
         state = check_md_arrays()
-        if all(status == 'clean' for status in state.values()):
+        if all(status in READWRITE_RAID_STATES for status in state.values()):
             disk_data = get_actual_data_from_system()
             disk_data = clean_unnecessary_data(disk_data)
             print('We assume that it new setup, so we write data to db')
@@ -115,6 +183,18 @@ if __name__ == '__main__':
     if disk_data == old_disk_data:
         # Nothing happened, we can leave job
         sys.exit(0)
+    else:
+        state = check_md_arrays()
+        if all(status in READWRITE_RAID_STATES for status in state.values()):
+            disk_data = get_actual_data_from_system()
+            disk_data = clean_unnecessary_data(disk_data)
+            print('We assume that it new setup, so we write data to db')
+            write_data_to_db(disk_data, db)
+        else:  # we have a trouble
+            bad_disks = get_failed_disks()
+            jira_status = get_jira_status()
+            if not jira_status:
+                create_jira_ticket()
 
 
 # https://github.com/nicolargo/pymdstat
